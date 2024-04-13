@@ -1,24 +1,25 @@
-import React, { useState, useEffect, FormEvent } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Button, 
   Flex, 
   Heading, 
   Text, 
   TextField, 
-  View,   
+  View, 
   withAuthenticator } from "@aws-amplify/ui-react";
+import { getUrl } from 'aws-amplify/storage';
 import "@aws-amplify/ui-react/styles.css";
 import { listNotes } from "../src/graphql/queries";
-import { createNote as createNoteMutation, deleteNote as deleteNoteMutation } from "../src/graphql/mutations";
+import { createNote as createNoteMutation, deleteNote as deleteNoteMutation, updateNote as updateNoteMutation } from "../src/graphql/mutations";
 import { generateClient } from "@aws-amplify/api";
-
-
-
+import { remove } from 'aws-amplify/storage';
+import 'bootstrap/dist/css/bootstrap.min.css';
 
 const client = generateClient();
 
 const App = ({ signOut }) => {
   const [notes, setNotes] = useState([]);
+  const [updatedNoteData, setUpdatedNoteData] = useState({ id: '', name: '', description: '' });
 
   useEffect(() => {
     fetchNotes();
@@ -30,7 +31,7 @@ const App = ({ signOut }) => {
     await Promise.all(
       notesFromAPI.map(async (note) => {
         if (note.image) {
-          const url = await Storage.get(note.name);
+          const url = await getUrl(note.name);
           note.image = url;
         }
         return note;
@@ -42,13 +43,11 @@ const App = ({ signOut }) => {
   async function createNote(event) {
     event.preventDefault();
     const form = new FormData(event.target);
-    const image = form.get("image");
     const data = {
       name: form.get("name"),
       description: form.get("description"),
-      image: image.name,
     };
-    if (!!data.image) await Storage.put(data.name, image);
+  
     await client.graphql({
       query: createNoteMutation,
       variables: { input: data },
@@ -56,66 +55,107 @@ const App = ({ signOut }) => {
     fetchNotes();
     event.target.reset();
   }
-  
-
+    
   async function deleteNote({ id, name }) {
     const newNotes = notes.filter((note) => note.id !== id);
     setNotes(newNotes);
-    await Storage.remove(name);
+    await remove(name);
     await client.graphql({
       query: deleteNoteMutation,
       variables: { input: { id } },
     });
   }
 
+  async function updateNote(id) {
+    const { name, description } = updatedNoteData;
+    const updatedNotes = notes.map(note => {
+      if (note.id === id) {
+        return { ...note, name, description };
+      }
+      return note;
+    });
+
+    setNotes(updatedNotes);
+
+    await client.graphql({
+      query: updateNoteMutation,
+      variables: { input: { id, name, description } },
+    });
+
+    // Clear the updated note data after update
+    setUpdatedNoteData({ id: '', name: '', description: '' });
+  }
+
   return (
-    <View className="App">
-      <Heading level={1}>My Notes App</Heading>
-      <View as="form" margin="3rem 0" onSubmit={createNote}>
-        <Flex direction="row" justifyContent="center">
-          <TextField
-            name="name"
-            placeholder="Note Name"
-            label="Note Name"
-            labelHidden
-            variation="quiet"
-            required
-          />
-          <TextField
-            name="description"
-            placeholder="Note Description"
-            label="Note Description"
-            labelHidden
-            variation="quiet"
-            required
-          />
-          <Button type="submit" variation="primary">
-            Create Note
-          </Button>
-        </Flex>
-      </View>
-      <Heading level={2}>Current Notes</Heading>
-      <View margin="3rem 0">
-        {notes.map((note) => (
-          <Flex
-            key={note.id || note.name}
-            direction="row"
-            justifyContent="center"
-            alignItems="center"
-          >
-            <Text as="strong" fontWeight={700}>
-              {note.name}
-            </Text>
-            <Text as="span">{note.description}</Text>
-            <Button variation="link" onClick={() => deleteNote(note)}>
-              Delete note
-            </Button>
-          </Flex>
-        ))}
-      </View>
-      <Button onClick={signOut}>Sign Out</Button>
-    </View>
+    <div className="App d-flex flex-column min-vh-100">
+      <nav className="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div className="container">
+          <a className="navbar-brand" href="#">My Notes App</a>
+          <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span className="navbar-toggler-icon"></span>
+          </button>
+          <div className="collapse navbar-collapse" id="navbarNav">
+            <ul className="navbar-nav ms-auto">
+              <li className="nav-item">
+                <a className="nav-link" href="#">Home</a>
+              </li>
+              <li className="nav-item">
+                <a className="nav-link" href="#">About</a>
+              </li>
+              <li className="nav-item">
+                <a className="nav-link" href="#">Contact</a>
+              </li>
+              <li className="nav-item">
+                <button className="btn btn-primary" onClick={signOut}>Sign Out</button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </nav>
+
+      <div className="container flex-grow-1">
+        <h1 className="mt-4">My Notes App</h1>
+        <form className="mt-4" onSubmit={createNote}>
+          <div className="row">
+            <div className="col">
+              <input type="text" className="form-control" name="name" placeholder="Note Name" required />
+            </div>
+            {/* <div className="col">
+              <input type="text" className="form-control" name="description" placeholder="Note Description" required />
+            </div> */}
+            <div className="col">
+              <button type="submit" className="btn btn-primary">Create Note</button>
+            </div>
+          </div>
+        </form>
+        
+        <h2 className="mt-4">Current Notes</h2>
+        <div className="mt-4">
+          {notes.map((note) => (
+            // Inside the map function for rendering notes
+          <div key={note.id || note.name} className="row align-items-center">
+            <div className="col">
+              
+              <strong>{note.name}</strong>
+              <span>{note.description}</span>
+            </div>
+            <div className="col-auto">
+              <button className="btn btn-link" onClick={() => deleteNote(note)}>Delete note</button>
+             
+            </div>
+          </div>
+
+          ))}
+        </div>
+      </div>
+
+      <footer className="footer py-3 bg-light fixed-bottom">
+        <div className="container text-center">
+          <span className="text-muted">© 2024 My Notes App</span>
+        </div>
+      </footer>
+    </div>
   );
-};
+}
 
 export default withAuthenticator(App);
